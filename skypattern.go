@@ -29,10 +29,7 @@ package skypattern
 import (
 	"image"
 	"image/color"
-	"image/png"
-	"math"
 	"math/rand"
-	"os"
 	"sync"
 
 	pq "github.com/TadaTeruki/PriorityQueueGo/PriorityQueue"
@@ -42,12 +39,22 @@ var direction = [][]int{
 	{0, -1}, {0, 1}, {-1, 0}, {1, 0},
 }
 
-type Path struct {
+type path struct {
 	isx, isy, iex, iey int
 }
 
+func clamp(t float64, min float64, max float64) float64 {
+	if t < min {
+		return min
+	} else if t > max {
+		return max
+	} else {
+		return t
+	}
+}
+
 func mapColorUnit(m float64, a, b uint8) uint8 {
-	return uint8(math.Max(math.Min(float64(a)*m+float64(b)*(1.-m), 1.0), 0.0))
+	return uint8(clamp(float64(a)*m+float64(b)*(1.-m), 0., 255.))
 }
 
 func mapColor(m float64, ca, cb *color.RGBA) *color.RGBA {
@@ -59,11 +66,9 @@ func mapColor(m float64, ca, cb *color.RGBA) *color.RGBA {
 	return nc
 }
 
-func getWeight(ord int) float64 {
-	return 1.0 - math.Sin(float64(ord)/500)
-}
-
-func GetPattern(seed int64, width, height int, color_a, color_b *color.RGBA) {
+// GeneratePattern: パラメータの値に応じてパターンを生成.
+// (引数: シード値, 画像データの横幅, 画像データの縦幅, 色1, 色2, weightの計算式)
+func GeneratePattern(seed int64, width, height int, color_a, color_b *color.RGBA, weight_func func(int) float64) *image.RGBA {
 
 	rand.Seed(seed)
 
@@ -81,14 +86,14 @@ func GetPattern(seed int64, width, height int, color_a, color_b *color.RGBA) {
 	depth[starty][startx] = 0
 
 	var nextpath pq.PriorityQueue
-	nextpath.Push(pq.MakeObject(Path{startx, starty, startx, starty}, rand.Float64()))
+	nextpath.Push(pq.MakeObject(path{startx, starty, startx, starty}, rand.Float64()))
 
 	for {
 		if nextpath.GetSize() == 0 {
 			break
 		}
 
-		p := nextpath.GetFront().Value.(Path)
+		p := nextpath.GetFront().Value.(path)
 
 		nextpath.PopFront()
 
@@ -111,7 +116,7 @@ func GetPattern(seed int64, width, height int, color_a, color_b *color.RGBA) {
 			}
 
 			if depth[ny][nx] < 0 {
-				nextpath.Push(pq.MakeObject(Path{p.iex, p.iey, nx, ny}, rand.Float64()))
+				nextpath.Push(pq.MakeObject(path{p.iex, p.iey, nx, ny}, rand.Float64()))
 			}
 
 		}
@@ -128,7 +133,7 @@ func GetPattern(seed int64, width, height int, color_a, color_b *color.RGBA) {
 	for iy := 0; iy < height; iy++ {
 		for ix := 0; ix < width; ix++ {
 			go func(x, y int) {
-				weight := math.Min(math.Max(getWeight(depth[y][x]), 0.0), 1.0)
+				weight := clamp(weight_func(depth[y][x]), 0., 1.)
 				color := mapColor(weight, color_a, color_b)
 				img.Set(x, y, color)
 				wg.Done()
@@ -138,8 +143,5 @@ func GetPattern(seed int64, width, height int, color_a, color_b *color.RGBA) {
 
 	wg.Wait()
 
-	file, _ := os.Create("image.png")
-	png.Encode(file, img)
-
-	file.Close()
+	return img
 }
