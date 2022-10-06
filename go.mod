@@ -1,4 +1,4 @@
-module stpattern
+module github.com/TadaTeruki/spanning-tree-sky-pattern
 
 go 1.19
 
